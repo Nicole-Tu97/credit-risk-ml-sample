@@ -42,7 +42,7 @@ I spent as much time on where the model fails as on its headline number:
 
 ## Fairness & governance
 
-Discrimination and decline rates are broken out by sex, age band, and education (`outputs/fairness.csv`). Parity looks reasonable on sex and age but weak on education, which I flag as a fairness risk rather than smooth over. [`MODEL_CARD.md`](MODEL_CARD.md) records intended use, limitations, monitoring (PSI and calibration drift), human checkpoints, and how the work lines up with **OSFI E-23** and **FCAC**. The LLM adverse-action layer is deliberately constrained: it can cite only the model's actual top risk drivers for an applicant, so it cannot invent a reason the model did not use.
+Discrimination and decline rates are broken out by sex, age band, and education (`outputs/fairness.csv`). Decline-rate parity is fine on sex (0.86) but dips below the 4/5ths rule on age (0.79), and looks very low on education (0.14) — though that last figure is mostly an artifact of a tiny n=120 "other" group with almost no declines. I flag these as fairness risks rather than smooth them over. [`MODEL_CARD.md`](MODEL_CARD.md) records intended use, limitations, monitoring (PSI and calibration drift), human checkpoints, and how the work lines up with **OSFI E-23** and **FCAC**. The LLM adverse-action layer is deliberately constrained: it can cite only the model's actual top risk drivers for an applicant, so it cannot invent a reason the model did not use.
 
 ## Roadmap / next steps
 
