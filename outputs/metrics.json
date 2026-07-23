@@ -1,0 +1,48 @@
+{
+  "models": [
+    {
+      "model": "LogisticRegression (scorecard baseline)",
+      "AUC": 0.7159,
+      "Gini": 0.4318,
+      "KS": 0.3709,
+      "Brier": 0.208,
+      "PSI_train_vs_test": 0.0009
+    },
+    {
+      "model": "HistGradientBoosting (challenger)",
+      "AUC": 0.7757,
+      "Gini": 0.5515,
+      "KS": 0.4242,
+      "Brier": 0.1361,
+      "PSI_train_vs_test": 0.0008
+    }
+  ],
+  "champion": "HistGradientBoosting",
+  "policy_cutoff_PD": 0.215,
+  "decline_parity_ratio": {
+    "AGE_band": 0.793,
+    "EDUCATION": 0.138,
+    "SEX": 0.88
+  },
+  "shap": true,
+  "top_logit_drivers": {
+    "PAY_1": 0.583,
+    "BILL_AMT1": -0.281,
+    "PAY_AMT2": -0.236,
+    "PAY_AMT1": -0.139,
+    "LIMIT_BAL": -0.118,
+    "PAY_2": 0.111,
+    "BILL_AMT3": 0.091,
+    "EDUCATION": -0.089
+  },
+  "top_gbm_importances": {
+    "PAY_1": 0.0809,
+    "LIMIT_BAL": 0.0139,
+    "BILL_AMT1": 0.0104,
+    "PAY_2": 0.005,
+    "PAY_3": 0.0043,
+    "PAY_AMT1": 0.0039,
+    "PAY_AMT3": 0.0039,
+    "PAY_4": 0.0039
+  }
+}

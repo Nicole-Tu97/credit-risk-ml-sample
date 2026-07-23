@@ -1,0 +1,8 @@
+pandas
+numpy
+scikit-learn
+scipy
+matplotlib
+shap
+xlrd
+anthropic  # optional — only needed to generate reason codes via the LLM
