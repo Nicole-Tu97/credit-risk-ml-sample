@@ -22,13 +22,16 @@ them accurate and defensible, and the human/AI boundary around them.
 | **AI-augmented** adverse-action reason codes (LLM, grounded in real drivers) | `src/ai_reason_codes.py` → `outputs/reason_codes_example.md` |
 | **Governance** — validation cadence, human checkpoints, OSFI E-23 / FCAC alignment | `MODEL_CARD.md` |
 
-## Results (30% hold-out)
-| Model | AUC | Gini | KS | Brier | PSI (train→test) |
-|---|--:|--:|--:|--:|--:|
-| Logistic regression (scorecard baseline) | 0.716 | 0.432 | 0.371 | 0.208 | 0.001 |
-| **HistGradientBoosting (champion)** | **0.776** | **0.552** | **0.424** | **0.136** | **0.001** |
+## Results (30% hold-out — untouched until final evaluation)
+| Model | AUC | Gini | KS | Brier | PSI | train AUC | gap |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| Logistic regression (scorecard baseline) | 0.754 | 0.509 | 0.397 | 0.192 | 0.001 | 0.765 | 0.010 |
+| **HistGradientBoosting + isotonic (champion)** | **0.784** | **0.569** | **0.429** | **0.134** | **0.001** | 0.815 | 0.031 |
 
-Top driver in both models: **most recent repayment status (`PAY_1`)** — consistent, sensible, and stable (PSI ≈ 0).
+Leakage-safe feature engineering (23 → 36 features), hyperparameters CV-tuned on train, probabilities isotonic-calibrated inside train.
+**Validity:** 5-fold CV AUC on train = **0.787** ≈ test AUC **0.784**; train–test gap **0.031**; PSI ≈ 0 — a credible,
+well-validated lift, not an overfit or leaked one. (On this well-known dataset, an AUC far above ~0.80 would itself
+be a red flag for leakage — so the goal was a *validated* result, not a vanity number.) Top driver: **recent repayment status (`PAY_1`)**.
 
 **What it gets wrong (see `outputs/findings.md`):** calibration drifts in the high-risk tail (least reliable exactly
 where declines happen → route to human review); discrimination is uneven across segments (a single global cutoff

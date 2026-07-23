@@ -1,37 +1,50 @@
-# Findings — what the model gets right, and where it breaks
+# Findings — performance, validity, and where the model breaks
 
-## Performance (test, 30% holdout)
-| model | AUC | Gini | KS | Brier | PSI (train vs test) |
-|---|--:|--:|--:|--:|--:|
-| LogisticRegression (scorecard baseline) | 0.7159 | 0.4318 | 0.3709 | 0.208 | 0.0009 |
-| HistGradientBoosting (challenger) | 0.7757 | 0.5515 | 0.4242 | 0.1361 | 0.0008 |
+## Validity controls (no leakage, no hidden overfitting)
+- **Feature engineering is leakage-safe:** all 13 engineered features are per-row transforms of
+  historical, pre-decision columns (repayment status, bills, payments). No cross-row statistics, no target, no future data.
+- **The test set was held out once** and used only for the final evaluation below — never for fitting, feature stats,
+  tuning, or calibration.
+- **Tuning on train only:** hyperparameters chosen by 5-fold CV on the training set (CV AUC = 0.7874).
+- **Calibration on train only:** isotonic calibration fit inside the training set via CV, then measured on test.
+- **Overfitting is measured, not assumed:** train-vs-test AUC gap = **0.0308** (small ⇒ not overfit);
+  test AUC (0.7844) is in line with CV AUC (0.7874).
 
-Champion: **HistGradientBoosting**. PSI < 0.1 ⇒ score distribution stable between train and test.
+## Performance (30% hold-out)
+| model | AUC | Gini | KS | Brier | PSI | train AUC | gap |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| LogisticRegression (scorecard baseline) | 0.7544 | 0.5089 | 0.3968 | 0.1922 | 0.0007 | 0.7649 | 0.0104 |
+| HistGradientBoosting + isotonic (champion) | 0.7844 | 0.5687 | 0.4286 | 0.1343 | 0.0005 | 0.8151 | 0.0308 |
 
-## Where it breaks (failure-mode analysis)
-1. **Calibration drifts in the high-risk tail.** Observed-minus-predicted default rate by PD decile:
+Champion: **HistGradientBoosting + isotonic**. Feature engineering + tuning + calibration improved discrimination and Brier while
+keeping the train-test gap small and PSI ≈ 0 (stable). (Note: on this well-known dataset an AUC far above ~0.80
+would signal leakage — the aim here is a *credible, validated* lift, not a vanity number.)
+
+## Where it still breaks
+1. **High-risk-tail calibration** — observed-minus-predicted default by PD decile:
         pred_PD  actual    gap    n
 decile                             
-0         0.059   0.041 -0.018  900
-1         0.080   0.066 -0.015  900
-2         0.097   0.116  0.018  900
-3         0.114   0.107 -0.007  900
-4         0.135   0.149  0.014  900
-5         0.157   0.162  0.005  900
-6         0.190   0.190 -0.000  900
-7         0.251   0.271  0.020  900
-8         0.403   0.419  0.016  900
-9         0.710   0.692 -0.018  900
-   The top deciles are where predicted and actual diverge most — the model is least reliable exactly where decisions
-   are most consequential (declines), so scores there should feed human review rather than auto-decline.
-2. **Uneven discrimination across segments.** Weakest segment AUC: EDUCATION=other
-   (AUC=0.607, n=120) vs. overall 0.7757. A single global cutoff is not
-   equally accurate for every group — a fairness and governance concern, not just an accuracy one.
-3. **Confidently-approved defaulters.** 162 test accounts scored PD<10% yet defaulted
-   (7% of the low-PD population) — the costly, silent errors auto-approval would miss.
-4. **Data-quality leak.** EDUCATION/MARRIAGE contained undocumented codes (0/5/6) folded into "other" during prep;
-   left unhandled they silently create phantom categories — the kind of issue that must be caught before, not after, deployment.
+0         0.033   0.040  0.007  902
+1         0.061   0.069  0.008  898
+2         0.086   0.084 -0.002  900
+3         0.113   0.111 -0.001  906
+4         0.143   0.133 -0.010  895
+5         0.167   0.188  0.021  899
+6         0.192   0.189 -0.004  901
+7         0.267   0.273  0.006  900
+8         0.424   0.425  0.002  901
+9         0.718   0.700 -0.017  898
+   Calibration is much improved but the extreme tail remains hardest — route those to human review, not auto-decline.
+2. **Uneven segment discrimination** — weakest: EDUCATION=other (AUC=0.612, n=120)
+   vs overall 0.7844. Decline-rate parity ratios: {'AGE_band': np.float64(0.792), 'EDUCATION': np.float64(0.139), 'SEX': np.float64(0.86)}.
+3. **Confidently-approved defaulters** — 175 accounts scored PD<10% still defaulted (6% of that group).
 
-## How these were found
-By validating the model against its own assumptions rather than the headline AUC: calibration by risk band,
-per-segment discrimination, and inspection of high-confidence errors — then routing the fragile regions to human checkpoints.
+## Top drivers (GBM permutation importance)
+pay_max        0.0489
+PAY_1          0.0226
+util_max       0.0055
+bill_trend     0.0044
+util_recent    0.0043
+pay_amt_sum    0.0037
+bill_mean      0.0021
+pay_to_bill    0.0021

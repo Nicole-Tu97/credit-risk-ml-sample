@@ -19,7 +19,9 @@ Champion = GBM on discrimination and calibration (see README table). Baseline re
 and challenger–champion comparison.
 
 ## Performance (30% stratified hold-out)
-AUC 0.776 · Gini 0.552 · KS 0.424 · Brier 0.136 · PSI(train→test) 0.001 (stable). Full numbers in
+Champion (HistGradientBoosting + isotonic): **AUC 0.784 · Gini 0.569 · KS 0.429 · Brier 0.134 · PSI 0.001**.
+**Validity:** 5-fold CV AUC on train 0.787 ≈ test 0.784; train–test AUC gap 0.031 (no material overfitting);
+23→36 leakage-safe engineered features, CV-tuned, isotonic-calibrated inside train. Full numbers in
 `outputs/metrics.json`; ROC & calibration in `outputs/roc_calibration.png`.
 
 ## Fairness assessment
