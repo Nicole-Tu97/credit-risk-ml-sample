@@ -22,7 +22,7 @@ and challenger–champion comparison.
 Champion (HistGradientBoosting + isotonic): **AUC 0.784 · Gini 0.569 · KS 0.429 · Brier 0.134 · PSI 0.001**.
 **Validity:** 5-fold CV AUC on train 0.787 ≈ test 0.784; train–test AUC gap 0.031 (no material overfitting);
 23→36 leakage-safe engineered features, CV-tuned, isotonic-calibrated inside train. Full numbers in
-`outputs/metrics.json`; ROC & calibration in `outputs/roc_calibration.png`.
+`outputs/metrics.json`; ROC, precision-recall, calibration & score separation in `outputs/model_performance.png`.
 
 ## Fairness assessment
 Discrimination and decline rates computed across **sex, age band, and education** (`outputs/fairness.csv`).

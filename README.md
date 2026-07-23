@@ -1,63 +1,73 @@
-# Credit-Decision PD Model — a governed, AI-augmented workflow
+# Credit Default Prediction — a validated, governed PD model
 
-A compact, end-to-end **probability-of-default (PD) model** for a lending decision, built the way a
-defensible credit-risk function should be: not just a classifier, but **validation, fairness, explainability,
-failure-mode analysis, and an AI-augmented adverse-action layer** — with the governance documented up front.
+A probability-of-default (PD) model on the UCI credit-card dataset, built end to end the way a
+credit-risk function needs before a model ships: leakage-safe features, cross-validated tuning,
+calibrated probabilities, and explicit validation, fairness, explainability, and failure-mode checks.
 
-Built as a work sample for a *Modeling & Risk Management* role: it mirrors, in miniature, an
-**AI-augmented credit-risk function** — models that drive portfolio decisions, the governance that keeps
-them accurate and defensible, and the human/AI boundary around them.
+> Data: **UCI "Default of Credit Card Clients"** (Taiwan, 2005; 30,000 accounts). Public — nothing proprietary.
 
-> Data: **UCI "Default of Credit Card Clients"** (Taiwan, 2005; 30,000 accounts) — public, see `data/README.md`.
-> Nothing here uses proprietary data.
+## Data
+30,000 accounts, 23 raw features: credit limit, demographics, and six months of repayment status,
+bill amounts, and payments. Target is default in the following month (22.1% base rate). Undocumented
+`EDUCATION`/`MARRIAGE` codes are folded into "other" as a logged data-quality step.
 
-## What it demonstrates (mapped to a credit-risk mandate)
-| Capability | Where |
-|---|---|
-| Build **and validate** ML models (not just use them) | `src/pipeline.py` → LogReg baseline + GBM challenger |
-| Credit-standard validation: **AUC, Gini, KS, calibration, PSI (stability)** | `outputs/metrics.json`, `roc_calibration.png` |
-| **Fairness / bias** across segments (sex, age, education) | `outputs/fairness.csv` |
-| **Explainability** (coefficients, permutation importance, **SHAP**) | `outputs/shap_summary.png`, `metrics.json` |
-| **Failure-mode analysis** — where the model breaks and why | `outputs/findings.md` |
-| **AI-augmented** adverse-action reason codes (LLM, grounded in real drivers) | `src/ai_reason_codes.py` → `outputs/reason_codes_example.md` |
-| **Governance** — validation cadence, human checkpoints, OSFI E-23 / FCAC alignment | `MODEL_CARD.md` |
+## Approach
+- **Features** — 23 → 36 leakage-safe features (utilization, delinquency streaks, payment-to-bill
+  ratios, balance/delinquency trends). Every feature is a per-row transform of pre-decision history:
+  no cross-row statistics, no target, no future information.
+- **Models** — a logistic-regression scorecard baseline and a HistGradientBoosting challenger, with
+  probabilities isotonic-calibrated.
+- **Validation** — a 30% hold-out is split off once and never used for fitting, tuning, or calibration.
+  Hyperparameters are tuned by 5-fold CV on the training set only, and CV AUC plus the train–test gap
+  are reported so overfitting is measured rather than assumed away.
 
-## Results (30% hold-out — untouched until final evaluation)
-| Model | AUC | Gini | KS | Brier | PSI | train AUC | gap |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| Logistic regression (scorecard baseline) | 0.754 | 0.509 | 0.397 | 0.192 | 0.001 | 0.765 | 0.010 |
-| **HistGradientBoosting + isotonic (champion)** | **0.784** | **0.569** | **0.429** | **0.134** | **0.001** | 0.815 | 0.031 |
+## Results (30% hold-out)
 
-Leakage-safe feature engineering (23 → 36 features), hyperparameters CV-tuned on train, probabilities isotonic-calibrated inside train.
-**Validity:** 5-fold CV AUC on train = **0.787** ≈ test AUC **0.784**; train–test gap **0.031**; PSI ≈ 0 — a credible,
-well-validated lift, not an overfit or leaked one. (On this well-known dataset, an AUC far above ~0.80 would itself
-be a red flag for leakage — so the goal was a *validated* result, not a vanity number.) Top driver: **recent repayment status (`PAY_1`)**.
+| Model | AUC | Gini | KS | Brier | PSI |
+|---|--:|--:|--:|--:|--:|
+| Logistic regression (baseline) | 0.754 | 0.509 | 0.397 | 0.192 | 0.001 |
+| **HistGradientBoosting + isotonic** | **0.784** | **0.569** | **0.429** | **0.134** | **0.001** |
 
-**What it gets wrong (see `outputs/findings.md`):** calibration drifts in the high-risk tail (least reliable exactly
-where declines happen → route to human review); discrimination is uneven across segments (a single global cutoff
-isn't equally fair/accurate for every group); and a set of confidently-approved accounts still default — the silent,
-costly errors that pure auto-approval would miss. These were found by validating the model **against its own
-assumptions**, not the headline AUC.
+5-fold CV AUC on train is 0.787, in line with the 0.784 hold-out (train–test gap 0.031, PSI ≈ 0), so
+the lift is validated rather than overfit. On this well-studied dataset an AUC far above ~0.80 usually
+points to leakage, so a credible 0.78 was the target, not a higher vanity number.
 
-## Run it
+![Champion model hold-out performance: ROC, precision-recall, calibration, score separation](outputs/model_performance.png)
+
+## Explainability
+
+Global importance from logistic coefficients, permutation importance, and SHAP. The dominant driver is
+the most recent repayment status (`PAY_1`). Per-applicant SHAP values feed the adverse-action layer.
+
+![SHAP summary](outputs/shap_summary.png)
+
+## Where it breaks (`outputs/findings.md`)
+- Calibration is weakest in the high-risk tail, exactly where declines happen — route those to human
+  review rather than auto-decline.
+- Discrimination is uneven across segments, so a single global cutoff is not equally fair or accurate.
+- A set of confidently-approved accounts (PD < 10%) still default: the silent false negatives that
+  pure auto-approval would miss.
+
+## Fairness & governance
+Discrimination and decline rates are computed across sex, age band, and education (`outputs/fairness.csv`);
+parity is reasonable on sex and age but weak on education, which is flagged as a fairness risk.
+[`MODEL_CARD.md`](MODEL_CARD.md) covers intended use, limitations, monitoring (PSI and calibration drift),
+human checkpoints, and alignment to **OSFI E-23** and **FCAC**. The LLM adverse-action layer may cite only
+the model's actual top risk drivers for a given applicant — it cannot introduce factors the model did not use.
+
+## Run
 ```bash
 pip install -r requirements.txt
-python3 src/download_data.py         # fetches the public UCI dataset into data/
-python3 src/pipeline.py              # build → validate → fairness → explainability → failure modes
-python3 src/ai_reason_codes.py       # AI adverse-action notices (set ANTHROPIC_API_KEY to use the LLM)
+python3 src/download_data.py      # fetch the public UCI dataset into data/
+python3 src/pipeline.py           # build, validate, fairness, explainability, failure modes
+python3 src/ai_reason_codes.py    # adverse-action notices (set ANTHROPIC_API_KEY to use the LLM)
 ```
 
 ## Structure
 ```
-src/pipeline.py          model build, validation, fairness, explainability, failure-mode analysis
-src/ai_reason_codes.py   LLM/agentic adverse-action layer (grounded in the model's real SHAP drivers)
-src/download_data.py     fetch the public dataset
-outputs/                 metrics.json, fairness.csv, findings.md, plots, reason_codes_example.md
-MODEL_CARD.md            intended use, performance, fairness, limitations, monitoring & regulatory alignment
+src/pipeline.py         model build, validation, fairness, explainability, failure-mode analysis
+src/features.py         shared leakage-safe feature engineering
+src/ai_reason_codes.py  LLM adverse-action layer, grounded in the model's real SHAP drivers
+outputs/                metrics.json, fairness.csv, findings.md, plots
+MODEL_CARD.md           intended use, performance, limitations, monitoring, governance
 ```
-
-## Governance note
-The AI layer is deliberately constrained: it may cite **only** the model's actual top risk drivers for an
-application — it cannot introduce factors the model did not use. Model risk, monitoring cadence, human
-checkpoints, and alignment to **OSFI E-23** (model risk management) and **FCAC** (plain-language adverse action)
-are documented in [`MODEL_CARD.md`](MODEL_CARD.md).

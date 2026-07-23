@@ -22,7 +22,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.calibration import CalibratedClassifierCV, calibration_curve
 from sklearn.pipeline import Pipeline
-from sklearn.metrics import roc_auc_score, brier_score_loss, roc_curve
+from sklearn.metrics import roc_auc_score, brier_score_loss, roc_curve, precision_recall_curve, average_precision_score
 from sklearn.inspection import permutation_importance
 warnings.filterwarnings("ignore")
 
@@ -72,15 +72,25 @@ m_gbm, p_te = evaluate("HistGradientBoosting + isotonic (champion)", gbm)
 for m in (m_logit, m_gbm): print(m)
 champion = "HistGradientBoosting + isotonic"
 
-# ---------- ROC + calibration ----------
-fig, ax = plt.subplots(1, 2, figsize=(11, 4.2))
-for nm, p in [("LogReg", p_logit), ("GBM", p_te)]:
-    fpr, tpr, _ = roc_curve(y_te, p); ax[0].plot(fpr, tpr, label=f"{nm} (AUC={roc_auc_score(y_te,p):.3f})")
-ax[0].plot([0, 1], [0, 1], "k--", lw=.8); ax[0].set(title="ROC", xlabel="FPR", ylabel="TPR"); ax[0].legend()
-fp, mp = calibration_curve(y_te, p_te, n_bins=10, strategy="quantile")
-ax[1].plot(mp, fp, "o-", label="GBM+isotonic"); ax[1].plot([0, 1], [0, 1], "k--", lw=.8)
-ax[1].set(title="Calibration (champion)", xlabel="Predicted PD", ylabel="Observed default rate"); ax[1].legend()
-plt.tight_layout(); plt.savefig(OUT / "roc_calibration.png", dpi=130); plt.close()
+# ---------- performance visuals: ROC / precision-recall / calibration / score separation ----------
+plt.rcParams.update({"font.size": 10, "axes.grid": True, "grid.alpha": .3,
+                     "axes.spines.top": False, "axes.spines.right": False})
+base_rate = float(y_te.mean()); COL = {"LogReg": "#9aa0b5", "GBM": "#1f77b4"}
+fig, ax = plt.subplots(2, 2, figsize=(11, 8.6))
+for nm, p in [("LogReg", p_logit), ("GBM", p_te)]:                                   # ROC
+    fpr, tpr, _ = roc_curve(y_te, p); ax[0, 0].plot(fpr, tpr, color=COL[nm], lw=2, label=f"{nm}  AUC={roc_auc_score(y_te, p):.3f}")
+ax[0, 0].plot([0, 1], [0, 1], "k--", lw=.8); ax[0, 0].set(title="ROC curve", xlabel="False positive rate", ylabel="True positive rate"); ax[0, 0].legend(loc="lower right", frameon=False)
+for nm, p in [("LogReg", p_logit), ("GBM", p_te)]:                                   # precision-recall
+    pr, rc, _ = precision_recall_curve(y_te, p); ax[0, 1].plot(rc, pr, color=COL[nm], lw=2, label=f"{nm}  AP={average_precision_score(y_te, p):.3f}")
+ax[0, 1].axhline(base_rate, ls="--", color="k", lw=.8, label=f"base rate {base_rate:.2f}"); ax[0, 1].set(title="Precision-Recall curve", xlabel="Recall", ylabel="Precision"); ax[0, 1].legend(loc="upper right", frameon=False)
+fp, mp = calibration_curve(y_te, p_te, n_bins=10, strategy="quantile")               # calibration
+ax[1, 0].plot(mp, fp, "o-", color=COL["GBM"], label="GBM + isotonic"); ax[1, 0].plot([0, 1], [0, 1], "k--", lw=.8, label="perfect")
+ax[1, 0].set(title="Calibration (champion)", xlabel="Mean predicted PD", ylabel="Observed default rate"); ax[1, 0].legend(loc="upper left", frameon=False)
+ax[1, 1].hist(p_te[y_te.values == 0], bins=40, density=True, alpha=.6, color="#2ca02c", label="repaid")   # score separation
+ax[1, 1].hist(p_te[y_te.values == 1], bins=40, density=True, alpha=.6, color="#d62728", label="defaulted")
+ax[1, 1].set(title=f"Score separation  (KS={ks_stat(y_te.values, p_te):.3f})", xlabel="Predicted PD", ylabel="Density"); ax[1, 1].legend(loc="upper right", frameon=False)
+fig.suptitle("Champion model — hold-out performance (HistGradientBoosting + isotonic)", fontsize=12)
+plt.tight_layout(); plt.savefig(OUT / "model_performance.png", dpi=130, bbox_inches="tight"); plt.close()
 
 # ---------- decision cutoff, fairness ----------
 cutoff = np.quantile(p_te, 0.70); declined = p_te >= cutoff
