@@ -55,6 +55,30 @@ parity is reasonable on sex and age but weak on education, which is flagged as a
 human checkpoints, and alignment to **OSFI E-23** and **FCAC**. The LLM adverse-action layer may cite only
 the model's actual top risk drivers for a given applicant — it cannot introduce factors the model did not use.
 
+## Roadmap / next steps
+
+These are the steps that would take this work sample from a point-in-time demo toward a model an origination team could actually deploy and defend.
+
+**Validation & monitoring**
+- Run a true out-of-time / vintage split instead of the random stratified hold-out: train on earlier origination months, test on later ones to expose temporal drift. Pair it with a feature-staleness ablation on `PAY_1` and `pay_max` (the two freshest, most dominant drivers) to bound refresh cadence. This is the single largest gap and should come first.
+- Replace the monitoring prose with an executable drift monitor: persist a versioned training reference (score bins, per-feature bins, calibration curve) and score each new batch for feature PSI, score PSI, and a calibration-drift test (Spiegelhalter Z / ECE), emitting warn/fail at the documented thresholds. Current PSI is train-vs-test from a single split and is near zero by construction.
+- Gate champion–challenger promotion in CI (minimum AUC lift, maximum overfit gap, maximum ECE, minimum fairness parity) and serialize the fitted pipeline, data checksum, pinned package versions, and seed to a run manifest, so any model swap is auditable and reproducible.
+
+**Modeling**
+- Fix the high-risk tail: benchmark isotonic against a monotone beta / Platt recalibration on a dedicated calibration split, bootstrap the calibration map for per-decile confidence bands, and map PD to a rating master scale. Isotonic is high-variance where the top decile thins out (0.718 predicted vs 0.700 observed).
+- Add monotonic constraints (HistGBM `monotonic_cst`) forcing PD to rise with the delinquency and utilization features (`PAY_1`, `pay_max`, `n_delinq`, `util_*`). This steadies tail behavior and keeps SHAP-based adverse-action reasons internally consistent, at near-zero AUC cost.
+- Replace the blanket `fillna(0.0)` with missingness indicators and the GBM's native NaN handling. Filling with zero conflates "no history" with "current and zero utilization," biasing PD downward and likely feeding the confident false negatives.
+
+**Fairness & governance**
+- Report calibration per protected group (slope, intercept, ECE), not just per-segment AUC, and replace the single min/max decline-parity ratio with a reference-group adverse-impact ratio plus equalized-odds / equal-opportunity metrics, each with bootstrap CIs and a 4/5ths gate. This shows whether the weak education parity is real signal or small-sample noise (n=120).
+- Ground the adverse-action reason codes in the deployed calibrated champion (they currently explain a separately refit uncalibrated GBM), and add a faithfulness test that the printed top-k reasons match the top-k SHAP drivers and that identical inputs yield identical notices.
+- Add pre-registered fairness pass/fail gates, a subgroup fairness-drift monitor, and a named-owner sign-off to the governance pack. Route thin or low-AUC segments to human review using a PD uncertainty band (conformal / Venn-Abers interval width), not only a point-PD cutoff.
+
+**Data & policy**
+- Add reject inference before any origination use: the model is fit only on booked accounts, so it is biased relative to the through-the-door population it would actually score.
+- Tie the cutoff to economics: optimize approve/decline bands on expected loss (PD × LGD × EAD, with `LIMIT_BAL` as an EAD proxy) and a good/default cost matrix, with segment-level bad-rate targets and a swap-set analysis, instead of the fixed 70th-percentile cutoff.
+- Add a thin-file data-sufficiency flag that routes sparse applicants to a conservative policy, and reserve a documented slot for bureau-style attributes (tradeline count, inquiries, oldest-account age). The model rests on six months of `PAY_*`/`BILL_*` history, so a dormant applicant is scored low-risk by default.
+
 ## Run
 ```bash
 pip install -r requirements.txt
