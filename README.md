@@ -1,4 +1,4 @@
-# Credit default prediction: a validated, governed PD model
+# Credit default prediction: a governed PD model
 
 A probability-of-default model on the public UCI credit-card dataset, built end to end. The point of the project isn't the classifier on its own. It's everything a credit-risk team needs around it before a model can be trusted with a decision: leakage-safe features, honest validation, calibration, fairness checks, explainability, and a written account of where the model fails.
 
@@ -8,9 +8,9 @@ A probability-of-default model on the public UCI credit-card dataset, built end 
 30,000 accounts with 23 raw fields: credit limit, a few demographics, and six months of repayment status, bill amounts, and payments. The target is whether the account defaults the following month (22.1% base rate). A handful of undocumented `EDUCATION` and `MARRIAGE` category codes are folded into "other" and logged, rather than left to create phantom categories.
 
 ## Approach
-**Features.** I turn the 23 raw fields into 36, adding utilization ratios, delinquency streaks, payment-to-bill coverage, and balance and delinquency trends. Every feature is a row-wise transform of pre-decision history, so there are no cross-row statistics, no target leakage, and no future information.
+**Features.** I turn the 23 raw fields into 36, adding utilization ratios, delinquency counts and severity, payment-to-bill coverage, and balance and delinquency trends. Every feature is a row-wise transform of pre-decision history, so there are no cross-row statistics, no target leakage, and no future information. The same transforms are also written in SQL (`sql/feature_extraction.sql`) so the features can be built directly in a warehouse.
 
-**Models.** A logistic-regression scorecard as an interpretable baseline, and a HistGradientBoosting model as the challenger. The challenger's probabilities are isotonic-calibrated, so a predicted PD can be read as an actual default rate.
+**Models.** A logistic-regression model as an interpretable baseline, and a HistGradientBoosting model as the challenger. The challenger's probabilities are isotonic-calibrated, so a predicted PD can be read as an actual default rate.
 
 **Validation.** I split off a 30% hold-out once and never touch it for fitting, tuning, or calibration. Hyperparameters come from 5-fold cross-validation on the training set, and I report both the CV AUC and the train-vs-test gap so overfitting is something you can see rather than take on trust.
 
@@ -21,7 +21,9 @@ A probability-of-default model on the public UCI credit-card dataset, built end 
 | Logistic regression (baseline) | 0.754 | 0.509 | 0.397 | 0.192 | 0.001 |
 | **HistGradientBoosting + isotonic** | **0.784** | **0.569** | **0.429** | **0.134** | **0.001** |
 
-Cross-validated AUC on the training set is 0.787, essentially the same as the 0.784 hold-out, with a 0.031 train-test gap and PSI near zero. The lift holds up out of sample. Worth saying: on a dataset this well studied, an AUC much above 0.80 usually means something has leaked, so a credible 0.78 was the goal rather than a bigger headline number.
+5-fold cross-validated AUC on the training set is 0.787, effectively equal to the 0.784 hold-out. That CV-to-test gap of about 0.003 is the real evidence the model generalizes; the raw train-vs-test gap (0.031) looks larger only because it compares training-set resubstitution to test. Worth saying: on a dataset this well studied, an AUC much above 0.80 usually means something has leaked, so a credible 0.78 was the goal, not a bigger headline number.
+
+(The PSI column above is a train-vs-test score-distribution check on a single random split, near zero by construction — not an out-of-time drift metric. Real drift monitoring is in the roadmap.)
 
 ![Champion model hold-out performance: ROC, precision-recall, calibration, score separation](outputs/model_performance.png)
 
@@ -36,7 +38,7 @@ Global drivers come from the logistic coefficients, permutation importance, and 
 I spent as much time on where the model fails as on its headline number:
 - Calibration is weakest in the high-risk tail, which is exactly where declines happen, so those cases should go to a person rather than an automatic decline.
 - Discrimination is not uniform across segments, so one global cutoff is not equally fair or accurate for everyone.
-- A handful of accounts scored below 10% PD still default. These confident false negatives are the quiet, expensive errors that pure auto-approval would wave through.
+- About 175 accounts scored below 10% PD still default (6% of that group). These confident false negatives are the quiet, expensive errors that pure auto-approval would wave through.
 
 ## Fairness & governance
 
@@ -78,6 +80,7 @@ python3 src/ai_reason_codes.py    # adverse-action notices (set ANTHROPIC_API_KE
 ```
 src/pipeline.py         model build, validation, fairness, explainability, failure-mode analysis
 src/features.py         shared leakage-safe feature engineering
+sql/feature_extraction.sql  the same feature logic in SQL, against a warehouse schema
 src/ai_reason_codes.py  LLM adverse-action layer, grounded in the model's real SHAP drivers
 outputs/                metrics.json, fairness.csv, findings.md, plots
 MODEL_CARD.md           intended use, performance, limitations, monitoring, governance

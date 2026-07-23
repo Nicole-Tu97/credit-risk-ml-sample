@@ -10,7 +10,7 @@
   },
   "models": [
     {
-      "model": "LogisticRegression (scorecard baseline)",
+      "model": "LogisticRegression (baseline)",
       "AUC": 0.7544,
       "Gini": 0.5089,
       "KS": 0.3968,

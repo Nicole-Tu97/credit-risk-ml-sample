@@ -7,18 +7,20 @@
   tuning, or calibration.
 - **Tuning on train only:** hyperparameters chosen by 5-fold CV on the training set (CV AUC = 0.7874).
 - **Calibration on train only:** isotonic calibration fit inside the training set via CV, then measured on test.
-- **Overfitting is measured, not assumed:** train-vs-test AUC gap = **0.0308** (small ⇒ not overfit);
-  test AUC (0.7844) is in line with CV AUC (0.7874).
+- **Overfitting is measured, not assumed:** the honest check is CV vs. test — 5-fold CV AUC (0.7874) vs. test AUC
+  (0.7844), a gap of ~0.003. (The raw train-vs-test gap of 0.0308 looks larger
+  only because it compares training-set resubstitution to test.)
 
 ## Performance (30% hold-out)
 | model | AUC | Gini | KS | Brier | PSI | train AUC | gap |
 |---|--:|--:|--:|--:|--:|--:|--:|
-| LogisticRegression (scorecard baseline) | 0.7544 | 0.5089 | 0.3968 | 0.1922 | 0.0007 | 0.7649 | 0.0104 |
+| LogisticRegression (baseline) | 0.7544 | 0.5089 | 0.3968 | 0.1922 | 0.0007 | 0.7649 | 0.0104 |
 | HistGradientBoosting + isotonic (champion) | 0.7844 | 0.5687 | 0.4286 | 0.1343 | 0.0005 | 0.8151 | 0.0308 |
 
-Champion: **HistGradientBoosting + isotonic**. Feature engineering + tuning + calibration improved discrimination and Brier while
-keeping the train-test gap small and PSI ≈ 0 (stable). (Note: on this well-known dataset an AUC far above ~0.80
-would signal leakage — the aim here is a *credible, validated* lift, not a vanity number.)
+Champion: **HistGradientBoosting + isotonic**. Feature engineering, tuning, and calibration improved discrimination and Brier while
+keeping the CV-to-test gap tiny. (Note: on this well-known dataset an AUC far above ~0.80 would signal leakage —
+the aim here is a *credible* lift, not a vanity number. PSI here is a train-vs-test score-distribution check on a
+single random split, ≈ 0 by construction — not an out-of-time drift metric; see the roadmap in the README.)
 
 ## Where it still breaks
 1. **High-risk-tail calibration** — observed-minus-predicted default by PD decile:

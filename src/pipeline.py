@@ -67,7 +67,7 @@ def evaluate(name, model):
                 Brier=round(brier_score_loss(y_te, p_te), 4), PSI_train_vs_test=round(psi(p_tr, p_te), 4),
                 AUC_train=round(auc_tr, 4), overfit_gap=round(auc_tr - auc_te, 4)), p_te
 
-m_logit, p_logit = evaluate("LogisticRegression (scorecard baseline)", logit)
+m_logit, p_logit = evaluate("LogisticRegression (baseline)", logit)
 m_gbm, p_te = evaluate("HistGradientBoosting + isotonic (champion)", gbm)
 for m in (m_logit, m_gbm): print(m)
 champion = "HistGradientBoosting + isotonic"
@@ -133,8 +133,9 @@ findings = f"""# Findings — performance, validity, and where the model breaks
   tuning, or calibration.
 - **Tuning on train only:** hyperparameters chosen by 5-fold CV on the training set (CV AUC = {cv_auc:.4f}).
 - **Calibration on train only:** isotonic calibration fit inside the training set via CV, then measured on test.
-- **Overfitting is measured, not assumed:** train-vs-test AUC gap = **{m_gbm['overfit_gap']}** (small ⇒ not overfit);
-  test AUC ({m_gbm['AUC']}) is in line with CV AUC ({cv_auc:.4f}).
+- **Overfitting is measured, not assumed:** the honest check is CV vs. test — 5-fold CV AUC ({cv_auc:.4f}) vs. test AUC
+  ({m_gbm['AUC']}), a gap of ~{abs(cv_auc - m_gbm['AUC']):.3f}. (The raw train-vs-test gap of {m_gbm['overfit_gap']} looks larger
+  only because it compares training-set resubstitution to test.)
 
 ## Performance (30% hold-out)
 | model | AUC | Gini | KS | Brier | PSI | train AUC | gap |
@@ -142,9 +143,10 @@ findings = f"""# Findings — performance, validity, and where the model breaks
 | {m_logit['model']} | {m_logit['AUC']} | {m_logit['Gini']} | {m_logit['KS']} | {m_logit['Brier']} | {m_logit['PSI_train_vs_test']} | {m_logit['AUC_train']} | {m_logit['overfit_gap']} |
 | {m_gbm['model']} | {m_gbm['AUC']} | {m_gbm['Gini']} | {m_gbm['KS']} | {m_gbm['Brier']} | {m_gbm['PSI_train_vs_test']} | {m_gbm['AUC_train']} | {m_gbm['overfit_gap']} |
 
-Champion: **{champion}**. Feature engineering + tuning + calibration improved discrimination and Brier while
-keeping the train-test gap small and PSI ≈ 0 (stable). (Note: on this well-known dataset an AUC far above ~0.80
-would signal leakage — the aim here is a *credible, validated* lift, not a vanity number.)
+Champion: **{champion}**. Feature engineering, tuning, and calibration improved discrimination and Brier while
+keeping the CV-to-test gap tiny. (Note: on this well-known dataset an AUC far above ~0.80 would signal leakage —
+the aim here is a *credible* lift, not a vanity number. PSI here is a train-vs-test score-distribution check on a
+single random split, ≈ 0 by construction — not an out-of-time drift metric; see the roadmap in the README.)
 
 ## Where it still breaks
 1. **High-risk-tail calibration** — observed-minus-predicted default by PD decile:

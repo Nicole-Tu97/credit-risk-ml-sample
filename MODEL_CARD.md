@@ -1,4 +1,4 @@
-# Model Card — Small-Business / Consumer PD Model (work sample)
+# Model Card — Consumer Revolving-Credit PD Model (work sample)
 
 ## Intended use
 Estimate an applicant's **probability of default (PD)** to support a lending decision. Intended as a
@@ -14,21 +14,24 @@ Preprocessing: undocumented `EDUCATION`/`MARRIAGE` category codes (0/5/6) folded
 data-quality control, logged rather than left to create phantom categories.
 
 ## Models & selection
-Interpretable **logistic-regression** baseline (scorecard-style) vs. **HistGradientBoosting** challenger.
+Interpretable **logistic-regression** baseline vs. **HistGradientBoosting** challenger.
 Champion = GBM on discrimination and calibration (see README table). Baseline retained for interpretability
 and challenger–champion comparison.
 
 ## Performance (30% stratified hold-out)
-Champion (HistGradientBoosting + isotonic): **AUC 0.784 · Gini 0.569 · KS 0.429 · Brier 0.134 · PSI 0.001**.
-**Validity:** 5-fold CV AUC on train 0.787 ≈ test 0.784; train–test AUC gap 0.031 (no material overfitting);
-23→36 leakage-safe engineered features, CV-tuned, isotonic-calibrated inside train. Full numbers in
-`outputs/metrics.json`; ROC, precision-recall, calibration & score separation in `outputs/model_performance.png`.
+Champion (HistGradientBoosting + isotonic): **AUC 0.784 · Gini 0.569 · KS 0.429 · Brier 0.134**.
+**Validity:** 5-fold CV AUC on train 0.787 ≈ test 0.784 — a CV-to-test gap of ~0.003, which is the real generalization
+check; the raw train-vs-test gap of 0.031 is resubstitution-vs-test and naturally larger. 23→36 leakage-safe engineered
+features, CV-tuned, isotonic-calibrated inside train. (PSI in the outputs is a single-split train/test score-distribution
+check, ≈0 by construction — not an out-of-time drift metric; true out-of-time validation is the top roadmap item.)
+Full numbers in `outputs/metrics.json`; ROC, precision-recall, calibration & score separation in `outputs/model_performance.png`.
 
 ## Fairness assessment
 Discrimination and decline rates computed across **sex, age band, and education** (`outputs/fairness.csv`).
-Findings: decline-rate parity is reasonable across sex (0.88) and age (0.79) but **weak across education (0.14)**,
-and AUC on the small "other" education group is unreliable (0.61, n=120). **Mitigation:** treat education-linked
-disparities as a fairness risk, avoid a single global cutoff for thin/low-AUC segments, and route them to review.
+Findings: decline-rate parity is acceptable on sex (0.86) but **falls below the 4/5ths threshold on age (0.79)**, and
+looks very low on education (0.14) — the last driven largely by a tiny "other" group (n=120) with almost no declines,
+whose AUC (0.61) is itself unreliable. **Mitigation:** treat the age and education disparities as fairness risks, avoid
+a single global cutoff for thin/low-AUC segments, and route them to review.
 
 ## Explainability
 Global: logistic coefficients + GBM permutation importance + SHAP summary (`outputs/shap_summary.png`).

@@ -48,8 +48,8 @@ def llm_notice(pd_score, drivers):
     try:
         import anthropic
         prompt = (
-            "You are a credit adjudication assistant writing an adverse-action notice for a declined small-business "
-            "loan applicant, in clear plain language consistent with Canadian FCAC expectations.\n"
+            "You are a credit adjudication assistant writing an adverse-action notice for a declined consumer-credit "
+            "applicant, in clear plain language consistent with Canadian FCAC expectations.\n"
             f"Model probability of default: {pd_score:.0%}.\n"
             f"The ONLY risk factors you may cite (from the model's own explanation) are: {factors}.\n"
             "Write 3-4 short, respectful bullet reason codes. Do NOT invent any factor not listed. "
