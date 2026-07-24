@@ -10,7 +10,7 @@ Governance choices:
 Run:  python3 src/ai_reason_codes.py   (add ANTHROPIC_API_KEY to use the LLM)
 Out:  outputs/reason_codes_example.md
 """
-import os
+import os, json
 from pathlib import Path
 import numpy as np, pandas as pd
 from sklearn.model_selection import train_test_split
@@ -20,9 +20,16 @@ from features import engineer, friendly
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data" / "default of credit card clients.xls"
 OUT = ROOT / "outputs"; OUT.mkdir(exist_ok=True)
-# champion-like config (mirrors the tuned params from pipeline.py)
-PARAMS = dict(max_depth=5, learning_rate=0.02, max_iter=800, max_leaf_nodes=15,
-              l2_regularization=5.0, early_stopping=True, validation_fraction=0.15, random_state=42)
+PROTECTED = ["SEX", "AGE", "EDUCATION", "MARRIAGE"]      # excluded from the model, mirroring pipeline.py
+FIXED = dict(early_stopping=True, validation_fraction=0.15, random_state=42)
+# Reuse the pipeline's CV-tuned params (outputs/metrics.json) so this mirrors the champion's base;
+# fall back to a champion-like default if the pipeline has not been run yet.
+_DEFAULT = dict(max_depth=5, learning_rate=0.02, max_iter=800, max_leaf_nodes=15, l2_regularization=5.0, min_samples_leaf=20)
+
+def _params():
+    mp = OUT / "metrics.json"
+    best = json.load(open(mp)).get("best_params", _DEFAULT) if mp.exists() else _DEFAULT
+    return {**best, **FIXED}
 
 def load_train():
     df = pd.read_excel(DATA, header=1).rename(columns={"default payment next month": "default", "PAY_0": "PAY_1"}).drop(columns=["ID"])
@@ -30,7 +37,8 @@ def load_train():
     y = df["default"].astype(int); X = df.drop(columns=["default"])
     Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.30, stratify=y, random_state=42)
     Xtr, Xte = engineer(Xtr), engineer(Xte)
-    gbm = HistGradientBoostingClassifier(**PARAMS).fit(Xtr, ytr)
+    Xtr, Xte = Xtr.drop(columns=PROTECTED), Xte.drop(columns=PROTECTED)   # model never sees demographics
+    gbm = HistGradientBoostingClassifier(**_params()).fit(Xtr, ytr)
     return gbm, Xtr, Xte
 
 def top_drivers(gbm, Xtr, Xte, row_idx, k=4):

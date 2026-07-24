@@ -14,27 +14,35 @@ Preprocessing: undocumented `EDUCATION`/`MARRIAGE` category codes (0/5/6) folded
 data-quality control, logged rather than left to create phantom categories.
 
 ## Models & selection
-Interpretable **logistic-regression** baseline vs. **HistGradientBoosting** challenger.
-Champion = GBM on discrimination and calibration (see README table). Baseline retained for interpretability
-and challenger–champion comparison.
+Interpretable **logistic-regression** baseline vs. **HistGradientBoosting** challenger, trained on 32 leakage-safe
+inputs (13 engineered + 19 raw credit-history fields). **Protected demographic attributes (sex, age, education,
+marital status) are excluded from the model** and used only for the disparate-impact audit. Champion = GBM on
+discrimination and calibration (see README table). The baseline is a fixed interpretable reference (not
+hyperparameter-tuned) retained for the challenger–champion comparison; it is left at default class weighting so its
+probabilities stay calibrated and the Brier comparison against the isotonic champion is apples-to-apples.
 
 ## Performance (30% stratified hold-out)
-Champion (HistGradientBoosting + isotonic): **AUC 0.784 · Gini 0.569 · KS 0.429 · Brier 0.134**.
-**Validity:** 5-fold CV AUC on train 0.787 ≈ test 0.784 — a CV-to-test gap of ~0.003, which is the real generalization
-check; the raw train-vs-test gap of 0.031 is resubstitution-vs-test and naturally larger. 23→36 leakage-safe engineered
-features, CV-tuned, isotonic-calibrated inside train. (PSI in the outputs is a single-split train/test score-distribution
-check, ≈0 by construction — not an out-of-time drift metric; true out-of-time validation is the top roadmap item.)
+Champion (HistGradientBoosting + isotonic): **AUC 0.7814 · Gini 0.5627 · KS 0.4278 · Brier 0.1348** (baseline: AUC 0.7495 · Brier 0.1427).
+**Validity:** 5-fold CV AUC on train 0.7869 ≈ test 0.7814 — a CV-to-test gap of ~0.006, which is the real generalization
+check; the raw train-vs-test gap of 0.0311 is resubstitution-vs-test and naturally larger. 32 leakage-safe model
+features (13 engineered + 19 raw credit-history), CV-tuned, isotonic-calibrated inside train. (PSI in the outputs is a
+single-split train/test score-distribution check, ≈0 by construction — not an out-of-time drift metric; true
+out-of-time validation is the top roadmap item.)
 Full numbers in `outputs/metrics.json`; ROC, precision-recall, calibration & score separation in `outputs/model_performance.png`.
 
 ## Fairness assessment
-Discrimination and decline rates computed across **sex, age band, and education** (`outputs/fairness.csv`).
-Findings: decline-rate parity is acceptable on sex (0.86) but **falls below the 4/5ths threshold on age (0.79)**, and
-looks very low on education (0.14) — the last driven largely by a tiny "other" group (n=120) with almost no declines,
-whose AUC (0.61) is itself unreliable. **Mitigation:** treat the age and education disparities as fairness risks, avoid
-a single global cutoff for thin/low-AUC segments, and route them to review.
+The model never sees protected attributes; they are used **only** for disparate-impact testing. Discrimination and
+decline rates are computed across **sex, age band, education, and marital status** (`outputs/fairness.csv`).
+Findings: decline-rate parity clears the 4/5ths rule on sex (0.882), marital status (0.91), and — marginally — age
+(0.801), but **falls below it on education (0.423)**, driven largely by a tiny "other" group (n=120) with an unusually
+low decline rate, whose AUC (0.616) is itself unreliable. **Mitigation:** treat the education disparity as a fairness
+risk, avoid a single global cutoff for thin/low-AUC segments, and route them to review.
 
 ## Explainability
-Global: logistic coefficients + GBM permutation importance + SHAP summary (`outputs/shap_summary.png`).
+Global: GBM permutation importance + SHAP summary, with logistic coefficients as a cross-check (`outputs/shap_summary.png`);
+the top drivers are `pay_max` (worst delinquency in 6 months) and `PAY_1` (most recent repayment status). These global
+rankings are computed on the uncalibrated base of the isotonic champion, which is monotone-equivalent, so per-applicant
+driver rankings are unchanged.
 Local: per-applicant SHAP drivers feed the adverse-action layer, which may cite **only** those factors.
 
 ## Limitations & failure modes (`outputs/findings.md`)

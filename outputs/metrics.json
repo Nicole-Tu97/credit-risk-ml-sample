@@ -1,5 +1,5 @@
 {
-  "cv_auc_train": 0.7874,
+  "cv_auc_train": 0.7869,
   "best_params": {
     "min_samples_leaf": 20,
     "max_leaf_nodes": 15,
@@ -11,44 +11,52 @@
   "models": [
     {
       "model": "LogisticRegression (baseline)",
-      "AUC": 0.7544,
-      "Gini": 0.5089,
-      "KS": 0.3968,
-      "Brier": 0.1922,
+      "AUC": 0.7495,
+      "Gini": 0.4991,
+      "KS": 0.3961,
+      "Brier": 0.1427,
       "PSI_train_vs_test": 0.0007,
-      "AUC_train": 0.7649,
-      "overfit_gap": 0.0104
+      "AUC_train": 0.7609,
+      "overfit_gap": 0.0114
     },
     {
       "model": "HistGradientBoosting + isotonic (champion)",
-      "AUC": 0.7844,
-      "Gini": 0.5687,
-      "KS": 0.4286,
-      "Brier": 0.1343,
-      "PSI_train_vs_test": 0.0005,
-      "AUC_train": 0.8151,
-      "overfit_gap": 0.0308
+      "AUC": 0.7814,
+      "Gini": 0.5627,
+      "KS": 0.4278,
+      "Brier": 0.1348,
+      "PSI_train_vs_test": 0.0024,
+      "AUC_train": 0.8124,
+      "overfit_gap": 0.0311
     }
   ],
   "champion": "HistGradientBoosting + isotonic",
-  "n_features_engineered": 36,
-  "policy_cutoff_PD": 0.2136,
+  "n_model_features": 32,
+  "n_engineered": 13,
+  "protected_excluded": [
+    "SEX",
+    "AGE",
+    "EDUCATION",
+    "MARRIAGE"
+  ],
+  "policy_cutoff_PD": 0.2215,
   "decline_parity_ratio": {
-    "AGE_band": 0.792,
-    "EDUCATION": 0.139,
-    "SEX": 0.86
+    "AGE_band": 0.801,
+    "EDUCATION": 0.423,
+    "MARRIAGE": 0.91,
+    "SEX": 0.882
   },
   "shap": true,
   "top_gbm_importances": {
-    "pay_max": 0.0489,
-    "PAY_1": 0.0226,
-    "util_max": 0.0055,
-    "bill_trend": 0.0044,
-    "util_recent": 0.0043,
+    "pay_max": 0.0501,
+    "PAY_1": 0.0232,
+    "util_max": 0.0054,
+    "bill_trend": 0.0051,
+    "util_recent": 0.0047,
     "pay_amt_sum": 0.0037,
-    "bill_mean": 0.0021,
-    "pay_to_bill": 0.0021,
-    "BILL_AMT1": 0.0018,
-    "LIMIT_BAL": 0.0016
+    "pay_to_bill": 0.0023,
+    "bill_mean": 0.0022,
+    "BILL_AMT1": 0.0017,
+    "n_delinq": 0.0016
   }
 }

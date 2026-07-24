@@ -5,6 +5,8 @@ v2: leakage-safe feature engineering + CV hyperparameter tuning + probability ca
 Validity guarantees (see also outputs/findings.md):
   * Feature engineering uses ONLY within-row historical columns (PAY_*/BILL_AMT*/PAY_AMT*), which are all
     pre-decision. It is a deterministic per-row transform — no cross-row stats, no target, no future data.
+  * Protected demographic attributes (SEX, AGE, EDUCATION, MARRIAGE) are EXCLUDED from the model feature
+    matrix (disparate-treatment control) and retained only as axes for the fairness / disparate-impact audit.
   * The test set is held out once and never used for fitting, feature stats, tuning, or calibration.
   * Hyperparameters are tuned by cross-validation on TRAIN only; calibration is fit inside TRAIN via CV.
   * We report CV AUC and the train-vs-test AUC gap so overfitting is visible, not assumed away.
@@ -39,11 +41,14 @@ def psi(e, a, bins=10):
 # ---------- load, split ONCE (test set is sacred), then engineer each side independently ----------
 df = pd.read_excel(DATA, header=1).rename(columns={"default payment next month": "default", "PAY_0": "PAY_1"}).drop(columns=["ID"])
 df["EDUCATION"] = df["EDUCATION"].replace({0: 4, 5: 4, 6: 4}); df["MARRIAGE"] = df["MARRIAGE"].replace({0: 3})
+PROTECTED = ["SEX", "AGE", "EDUCATION", "MARRIAGE"]   # demographic attributes: kept OUT of the model, retained only for the fairness audit
 y = df["default"].astype(int); X = df.drop(columns=["default"])
 X_tr_raw, X_te_raw, y_tr, y_te = train_test_split(X, y, test_size=0.30, stratify=y, random_state=RNG)
 X_tr, X_te = engineer(X_tr_raw), engineer(X_te_raw)              # deterministic, fit-free -> no leakage
+n_engineered = X_tr.shape[1] - X_tr_raw.shape[1]                 # columns added by engineer()
+X_tr, X_te = X_tr.drop(columns=PROTECTED), X_te.drop(columns=PROTECTED)   # disparate-treatment control: the model never sees demographics
 feats = X_tr.columns.tolist()
-print(f"rows={len(df)} default_rate={y.mean():.3f} | features: {X.shape[1]} raw -> {len(feats)} engineered")
+print(f"rows={len(df)} default_rate={y.mean():.3f} | raw={X.shape[1]} ({len(PROTECTED)} protected excluded) -> {len(feats)} model features ({n_engineered} engineered + {len(feats)-n_engineered} raw credit-history)")
 
 # ---------- tune GBM by CV on TRAIN ONLY ----------
 grid = {"learning_rate": [0.02, 0.05, 0.1], "max_depth": [3, 4, 5, None], "max_iter": [300, 500, 800],
@@ -57,8 +62,10 @@ print(f"CV AUC (train, {5}-fold) = {cv_auc:.4f}  best={best}")
 gbm_base = HistGradientBoostingClassifier(early_stopping=True, validation_fraction=0.15, random_state=RNG, **best).fit(X_tr, y_tr)
 gbm = CalibratedClassifierCV(HistGradientBoostingClassifier(early_stopping=True, validation_fraction=0.15, random_state=RNG, **best),
                              method="isotonic", cv=5).fit(X_tr, y_tr)   # calibration fit INSIDE train via CV
+# Baseline = FIXED interpretable reference (not hyperparameter-tuned) — standard champion-vs-challenger practice.
+# class_weight left at default so the baseline stays calibrated, making the Brier comparison apples-to-apples vs the isotonic champion.
 logit = Pipeline([("sc", StandardScaler()),
-                  ("clf", LogisticRegression(max_iter=3000, class_weight="balanced", C=0.1))]).fit(X_tr, y_tr)
+                  ("clf", LogisticRegression(max_iter=3000, C=0.1))]).fit(X_tr, y_tr)
 
 def evaluate(name, model):
     p_tr, p_te = model.predict_proba(X_tr)[:, 1], model.predict_proba(X_te)[:, 1]
@@ -96,9 +103,9 @@ plt.tight_layout(); plt.savefig(OUT / "model_performance.png", dpi=130, bbox_inc
 cutoff = np.quantile(p_te, 0.70); declined = p_te >= cutoff
 seg = X_te_raw.copy(); seg["_pd"] = p_te; seg["_y"] = y_te.values; seg["_declined"] = declined
 seg["AGE_band"] = pd.cut(seg["AGE"], [0, 30, 40, 50, 200], labels=["<30", "30-40", "40-50", "50+"])
-sm = {1: "male", 2: "female"}; em = {1: "grad_school", 2: "university", 3: "high_school", 4: "other"}
+sm = {1: "male", 2: "female"}; em = {1: "grad_school", 2: "university", 3: "high_school", 4: "other"}; mm = {1: "married", 2: "single", 3: "other"}
 rows = []
-for col, mp2 in [("SEX", sm), ("AGE_band", None), ("EDUCATION", em)]:
+for col, mp2 in [("SEX", sm), ("AGE_band", None), ("EDUCATION", em), ("MARRIAGE", mm)]:   # disparate-impact audit on attributes the model never saw
     for g, gd in seg.groupby(col):
         if len(gd) < 100: continue
         auc_g = roc_auc_score(gd["_y"], gd["_pd"]) if gd["_y"].nunique() > 1 else np.nan
@@ -106,7 +113,7 @@ for col, mp2 in [("SEX", sm), ("AGE_band", None), ("EDUCATION", em)]:
                          default_rate=round(gd["_y"].mean(), 3), decline_rate=round(gd["_declined"].mean(), 3),
                          AUC=round(auc_g, 3) if auc_g == auc_g else None))
 fair = pd.DataFrame(rows); fair.to_csv(OUT / "fairness.csv", index=False)
-di = {a: round(g["decline_rate"].min() / g["decline_rate"].max(), 3) for a, g in fair.groupby("attribute")}
+di = {a: round(float(g["decline_rate"].min() / g["decline_rate"].max()), 3) for a, g in fair.groupby("attribute")}
 
 # ---------- explainability ----------
 imp = pd.Series(permutation_importance(gbm_base, X_te, y_te, scoring="roc_auc", n_repeats=5, random_state=RNG).importances_mean, index=feats).sort_values(ascending=False)
@@ -127,8 +134,10 @@ hi_fn = int(((te["_pd"] < 0.10) & (te["_y"] == 1)).sum()); hi_fn_rate = round(((
 findings = f"""# Findings — performance, validity, and where the model breaks
 
 ## Validity controls (no leakage, no hidden overfitting)
-- **Feature engineering is leakage-safe:** all {len(feats)-X.shape[1]} engineered features are per-row transforms of
+- **Feature engineering is leakage-safe:** all {n_engineered} engineered features are per-row transforms of
   historical, pre-decision columns (repayment status, bills, payments). No cross-row statistics, no target, no future data.
+- **Protected attributes excluded from the model:** SEX, AGE, EDUCATION, MARRIAGE are dropped from the {len(feats)}-feature
+  matrix (disparate-treatment control) and retained only as axes for the fairness audit below — the model never sees them.
 - **The test set was held out once** and used only for the final evaluation below — never for fitting, feature stats,
   tuning, or calibration.
 - **Tuning on train only:** hyperparameters chosen by 5-fold CV on the training set (CV AUC = {cv_auc:.4f}).
@@ -143,8 +152,9 @@ findings = f"""# Findings — performance, validity, and where the model breaks
 | {m_logit['model']} | {m_logit['AUC']} | {m_logit['Gini']} | {m_logit['KS']} | {m_logit['Brier']} | {m_logit['PSI_train_vs_test']} | {m_logit['AUC_train']} | {m_logit['overfit_gap']} |
 | {m_gbm['model']} | {m_gbm['AUC']} | {m_gbm['Gini']} | {m_gbm['KS']} | {m_gbm['Brier']} | {m_gbm['PSI_train_vs_test']} | {m_gbm['AUC_train']} | {m_gbm['overfit_gap']} |
 
-Champion: **{champion}**. Feature engineering, tuning, and calibration improved discrimination and Brier while
-keeping the CV-to-test gap tiny. (Note: on this well-known dataset an AUC far above ~0.80 would signal leakage —
+Champion: **{champion}**. It leads the baseline on discrimination (AUC/Gini/KS) at a comparable, well-calibrated Brier —
+both models are calibrated, so the Brier comparison is apples-to-apples — while keeping the CV-to-test gap tiny.
+(Note: on this well-known dataset an AUC far above ~0.80 would signal leakage —
 the aim here is a *credible* lift, not a vanity number. PSI here is a train-vs-test score-distribution check on a
 single random split, ≈ 0 by construction — not an out-of-time drift metric; see the roadmap in the README.)
 
@@ -157,11 +167,15 @@ single random split, ≈ 0 by construction — not an out-of-time drift metric; 
 3. **Confidently-approved defaulters** — {hi_fn} accounts scored PD<10% still defaulted ({hi_fn_rate:.0%} of that group).
 
 ## Top drivers (GBM permutation importance)
+Computed on the uncalibrated base of the isotonic champion; isotonic calibration is a monotone transform of the
+score, so per-applicant driver rankings are unchanged.
+
 {imp.head(8).round(4).to_string()}
 """
 (OUT / "findings.md").write_text(findings)
 json.dump({"cv_auc_train": round(cv_auc, 4), "best_params": best, "models": [m_logit, m_gbm], "champion": champion,
-           "n_features_engineered": len(feats), "policy_cutoff_PD": round(float(cutoff), 4),
+           "n_model_features": len(feats), "n_engineered": n_engineered, "protected_excluded": PROTECTED,
+           "policy_cutoff_PD": round(float(cutoff), 4),
            "decline_parity_ratio": di, "shap": shap_ok, "top_gbm_importances": imp.head(10).round(4).to_dict()},
           open(OUT / "metrics.json", "w"), indent=2)
 print(f"\nDONE. champion test AUC={m_gbm['AUC']} (CV {cv_auc:.4f}, gap {m_gbm['overfit_gap']}) -> outputs/")
